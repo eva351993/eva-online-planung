@@ -126,6 +126,7 @@ option.currentKwOption{background:#e5e7eb;color:#111827;font-weight:bold}
 <div class="card"><h2>Ausdauerbereiche</h2><div id="statEndurance"></div></div>
 <div class="card"><h2>Kraftbereiche</h2><div id="statStrength"></div></div>
 <div class="card"><h2>Sprünge</h2><div id="statJumps"></div></div>
+<div class="card"><h2>IST Training pro Tag</h2><div id="statIstDaily"></div></div>
 </section>
 
 <section id="year" class="tab">
@@ -468,6 +469,19 @@ function atHolidays(year){
   const moving=[addDays(e,1),addDays(e,39),addDays(e,50),addDays(e,60)].map(iso);
   return new Set([...fixed,...moving]);
 }
+
+function minutesFromTime(t){
+  if(!t)return 720;
+  let p=String(t).split(":").map(Number);
+  return (p[0]||0)*60+(p[1]||0);
+}
+function workItemMarkup(w){
+  let time="";
+  if(w.start_time)time+=String(w.start_time).slice(0,5);
+  if(w.end_time)time+="-"+String(w.end_time).slice(0,5);
+  return `<div class="item work">${esc(w.type)} ${time}</div>`;
+}
+
 function eventMinutes(e){if(e.start_time){let p=String(e.start_time).split(":");return Number(p[0])*60+Number(p[1]||0)}return 720}
 function trainingMinutes(t){return 720}
 function workMinutes(w){return 720}
@@ -560,6 +574,21 @@ function renderWeek(){
       pushItem(isPm?720:480,`<div class="item training">${esc(t.kind)} ${esc(t.sport)} ${t.datatype==='jump'?t.jumps+' Spr.':fmtHM(t.minutes)}</div>`)
     });
     db.work.filter(w=>w.date===ds).forEach(w=>pushItem(workMinutes(w),`<div class="item work">${esc(w.type)} ${w.hours||''}</div>`));
+    db.work.filter(w=>w.date===ds).forEach(w=>{
+      const type=String(w.type||"");
+      const mark=workItemMarkup(w);
+      if(type==="Urlaub" || type==="Krankenstand"){
+        am.push({minutes:480,markup:mark});
+        pm.push({minutes:720,markup:mark});
+      }else if(type==="Zeitausgleich"){
+        const startMin=minutesFromTime(w.start_time);
+        const endMin=w.end_time?minutesFromTime(w.end_time):startMin+60;
+        if(startMin<720) am.push({minutes:startMin,markup:mark});
+        if(endMin>720) pm.push({minutes:Math.max(startMin,720),markup:mark});
+      }else{
+        pushItem(minutesFromTime(w.start_time),mark);
+      }
+    });
     am.sort((a,b)=>a.minutes-b.minutes);pm.sort((a,b)=>a.minutes-b.minutes);
     let holidayLabel=holidays.has(ds)?" <span class='small'>Feiertag</span>":"";
     html+=`<div class="${classes.join(' ')}"><b>${weekdayName(d)} ${ds}</b>${holidayLabel}<div class="daycols"><div class="daycol"><b>Vormittag</b>${am.map(x=>x.markup).join("")}</div><div class="daycol"><b>Nachmittag</b>${pm.map(x=>x.markup).join("")}</div></div></div>`;
@@ -732,8 +761,30 @@ function renderWeekStats(){
 
   $("statJumps").innerHTML="<table><tr><th>Schanze</th><th class='num'>SOLL</th><th class='num'>IST</th><th class='num'>Diff</th></tr>"+
   jumps.map(j=>{let sv=so.jumps[j]||0,iv=is.jumps[j]||0;return `<tr><td data-label="Schanze"><b>${j}</b></td><td data-label="SOLL" class="num">${fmtN(sv)}</td><td data-label="IST" class="num">${fmtN(iv)}</td><td data-label="Diff" class="num">${fmtN(iv-sv)}</td></tr>`}).join("")+"</table>";
+
+  renderIstTrainingDaily();
 }
 
+
+
+function renderIstTrainingDaily(){
+  if(!$("statIstDaily"))return;
+  const season=$("statSeason")?.value || selectedSeason || seasonOf(today());
+  const kw=Number($("statKw")?.value || selectedKw || isoWeek(today()));
+  const mon=weekStartFromSeasonKw(season,kw);
+  let out="<div class='compactList'>";
+  for(let i=0;i<7;i++){
+    let d=new Date(mon);d.setDate(mon.getDate()+i);
+    let ds=iso(d);
+    let items=db.trainings.filter(t=>t.date===ds && t.kind==="IST").map(t=>{
+      let val=t.datatype==="jump" ? `${t.jumps||0} Spr.` : fmtHM(t.minutes||0);
+      return `${esc(t.sport||"")} · ${esc(t.category||"")} · ${val}${t.notes?(" · "+esc(t.notes)):""}`;
+    });
+    out+=`<div class="compactItem"><b>${weekdayName(d)} ${ds}</b><br>${items.length?items.map(x=>`<div>${x}</div>`).join(""):"<span class='small'>kein IST Training</span>"}</div>`;
+  }
+  out+="</div>";
+  $("statIstDaily").innerHTML=out;
+}
 
 function renderWeekStatsSafe(){
   try{
