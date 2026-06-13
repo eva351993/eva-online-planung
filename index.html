@@ -123,10 +123,10 @@ option.currentKwOption{background:#e5e7eb;color:#111827;font-weight:bold}
 <div><label>Kalenderwoche</label><select id="statKw" onchange="renderWeekStats()"></select></div>
 </div>
 </div>
+<div class="card"><h2>IST Training pro Tag</h2><div id="statIstDaily"></div></div>
 <div class="card"><h2>Ausdauerbereiche</h2><div id="statEndurance"></div></div>
 <div class="card"><h2>Kraftbereiche</h2><div id="statStrength"></div></div>
 <div class="card"><h2>Sprünge</h2><div id="statJumps"></div></div>
-<div class="card"><h2>IST Training pro Tag</h2><div id="statIstDaily"></div></div>
 </section>
 
 <section id="year" class="tab">
@@ -426,7 +426,7 @@ async function assignPolarImport(id){
 }
 
 async function saveTraining(){if(!unlocked)return;const sport=$("t_sport").value;let category=$("t_category").value,datatype="time",minutes=num($("t_h").value)*60+num($("t_m").value),j=0;if(sport==="Krafttraining")category=$("t_strength").value;if(sport==="Sprungtraining"){category=$("t_jump").value;datatype="jump";j=Math.round(num($("t_jumps").value));minutes=0}const payload={date:$("t_date").value||today(),kind:$("t_kind").value,sport,category,datatype,minutes,jumps:j,rpe:num($("t_rpe").value),high_impact:$("t_impact").value==="Ja",knee_reaction:$("t_react").value,notes:(($("t_kind").value==="SOLL"?"Tageszeit: "+$("t_daypart").value+"; ":"")+($("t_notes").value||""))||null};const {error}=await sb.from("trainings").insert(payload);if(error){alert(error.message);return}await loadData()}
-async function saveWork(){if(!unlocked)return;let h=num($("w_hours").value),b=num($("w_bonus").value),typ=$("w_type").value;let credit=0,used=0,vac=0;if(typ==="Mehrarbeit")credit=h*(1+b/100);if(typ==="Zeitausgleich")used=h;if(typ==="Urlaub")vac=h||1;const payload={date:$("w_date").value||today(),type:typ,hours:h,bonus_percent:b,za_credit:credit,za_used:used,vacation_used:vac,notes:((typ==="Zeitausgleich"?"von "+($("w_start").value||"")+" bis "+($("w_end").value||"")+"; ":"")+($("w_notes").value||""))||null};const {error}=await sb.from("work_entries").insert(payload);if(error){alert(error.message);return}await loadData()}
+async function saveWork(){if(!unlocked)return;let h=num($("w_hours").value),b=num($("w_bonus").value),typ=$("w_type").value;let credit=0,used=0,vac=0;if(typ==="Mehrarbeit")credit=h*(1+b/100);if(typ==="Zeitausgleich")used=h;if(typ==="Urlaub")vac=h||1;const payload={date:$("w_date").value||today(),type:typ,start_time:$("w_start")?.value||null,end_time:$("w_end")?.value||null,hours:h,bonus_percent:b,za_credit:credit,za_used:used,vacation_used:vac,notes:((typ==="Zeitausgleich"?"von "+($("w_start").value||"")+" bis "+($("w_end").value||"")+"; ":"")+($("w_notes").value||""))||null};const {error}=await sb.from("work_entries").insert(payload);if(error){alert(error.message);return}await loadData()}
 
 async function saveKneeCirc(){
   if(!unlocked)return;
@@ -549,6 +549,31 @@ function eventMinutes(e){if(e.start_time){let p=String(e.start_time).split(":");
 function trainingMinutes(t){return 720}
 function workMinutes(w){return 720}
 
+
+function workStartMinutes(w){
+  if(w.start_time){
+    let p=String(w.start_time).split(":").map(Number);
+    return (p[0]||0)*60+(p[1]||0);
+  }
+  return 720;
+}
+function workEndMinutes(w){
+  if(w.end_time){
+    let p=String(w.end_time).split(":").map(Number);
+    return (p[0]||0)*60+(p[1]||0);
+  }
+  return workStartMinutes(w)+60;
+}
+function workDisplayText(w){
+  let t=esc(w.type||"");
+  if(w.type==="Zeitausgleich"){
+    let a=w.start_time?String(w.start_time).slice(0,5):"";
+    let b=w.end_time?String(w.end_time).slice(0,5):"";
+    if(a||b)t+=" "+a+(b?("-"+b):"");
+  }
+  return `<div class="item work">${t}</div>`;
+}
+
 function renderWeek(){
   ensureDashboardSelectors();
   const season=selectedSeason||seasonOf(today());
@@ -566,30 +591,43 @@ function renderWeek(){
     if(d.getDay()===6)classes.push("saturday");
     if(d.getDay()===0)classes.push("sunday");
     if(holidays.has(ds))classes.push("holiday");
+
     let am=[],pm=[];
-    function pushItem(minutes,markup){(minutes<720?am:pm).push({minutes,markup})}
-    db.events.filter(e=>e.date===ds).forEach(e=>pushItem(eventMinutes(e),`<div class="item ${e.source==='Extern'?'external':''}">${e.start_time||''} ${esc(e.title)} ${e.source==='Extern'?'(extern)':''}</div>`));
-    db.trainings.filter(t=>t.date===ds && t.kind==="SOLL").forEach(t=>{
-      let isPm=String(t.notes||"").includes("Nachmittag");
-      pushItem(isPm?720:480,`<div class="item training">${esc(t.kind)} ${esc(t.sport)} ${t.datatype==='jump'?t.jumps+' Spr.':fmtHM(t.minutes)}</div>`)
+    function addAM(markup,minutes=480){am.push({minutes,markup})}
+    function addPM(markup,minutes=720){pm.push({minutes,markup})}
+    function pushTimed(minutes,markup){(minutes<720?am:pm).push({minutes,markup})}
+
+    db.events.filter(e=>e.date===ds).forEach(e=>{
+      pushTimed(eventMinutes(e),`<div class="item ${e.source==='Extern'?'external':''}">${e.start_time||''} ${esc(e.title)} ${e.source==='Extern'?'(extern)':''}</div>`);
     });
-    db.work.filter(w=>w.date===ds).forEach(w=>pushItem(workMinutes(w),`<div class="item work">${esc(w.type)} ${w.hours||''}</div>`));
+
+    // Im Wochenplan nur SOLL-Training anzeigen
+    db.trainings.filter(t=>t.date===ds && t.kind==="SOLL").forEach(t=>{
+      const mark=`<div class="item training">${esc(t.kind)} ${esc(t.sport)} ${t.datatype==='jump'?t.jumps+' Spr.':fmtHM(t.minutes)}</div>`;
+      if(String(t.daypart||t.notes||"").includes("Nachmittag")) addPM(mark,720);
+      else addAM(mark,480);
+    });
+
+    // Arbeit / Urlaub / Krankenstand / Zeitausgleich sauber anzeigen
     db.work.filter(w=>w.date===ds).forEach(w=>{
       const type=String(w.type||"");
-      const mark=workItemMarkup(w);
+      const mark=workDisplayText(w);
       if(type==="Urlaub" || type==="Krankenstand"){
-        am.push({minutes:480,markup:mark});
-        pm.push({minutes:720,markup:mark});
+        // genau einmal vormittag und einmal nachmittag
+        addAM(mark,480);
+        addPM(mark,720);
       }else if(type==="Zeitausgleich"){
-        const startMin=minutesFromTime(w.start_time);
-        const endMin=w.end_time?minutesFromTime(w.end_time):startMin+60;
-        if(startMin<720) am.push({minutes:startMin,markup:mark});
-        if(endMin>720) pm.push({minutes:Math.max(startMin,720),markup:mark});
+        const startMin=workStartMinutes(w);
+        const endMin=workEndMinutes(w);
+        if(startMin<720) addAM(mark,startMin);
+        if(endMin>720) addPM(mark,Math.max(startMin,720));
       }else{
-        pushItem(minutesFromTime(w.start_time),mark);
+        pushTimed(workStartMinutes(w),mark);
       }
     });
-    am.sort((a,b)=>a.minutes-b.minutes);pm.sort((a,b)=>a.minutes-b.minutes);
+
+    am.sort((a,b)=>a.minutes-b.minutes);
+    pm.sort((a,b)=>a.minutes-b.minutes);
     let holidayLabel=holidays.has(ds)?" <span class='small'>Feiertag</span>":"";
     html+=`<div class="${classes.join(' ')}"><b>${weekdayName(d)} ${ds}</b>${holidayLabel}<div class="daycols"><div class="daycol"><b>Vormittag</b>${am.map(x=>x.markup).join("")}</div><div class="daycol"><b>Nachmittag</b>${pm.map(x=>x.markup).join("")}</div></div></div>`;
   }
@@ -747,6 +785,7 @@ function ensureWeekStatsSelectors(){
 }
 function renderWeekStats(){
   ensureWeekStatsSelectors();
+  renderIstTrainingDaily();
   if(!$("statSeason")||!$("statKw"))return;
   const season=$("statSeason").value||seasonOf(today());
   const kw="KW"+String(Number($("statKw").value||isoWeek(today()))).padStart(2,"0");
@@ -762,8 +801,9 @@ function renderWeekStats(){
   $("statJumps").innerHTML="<table><tr><th>Schanze</th><th class='num'>SOLL</th><th class='num'>IST</th><th class='num'>Diff</th></tr>"+
   jumps.map(j=>{let sv=so.jumps[j]||0,iv=is.jumps[j]||0;return `<tr><td data-label="Schanze"><b>${j}</b></td><td data-label="SOLL" class="num">${fmtN(sv)}</td><td data-label="IST" class="num">${fmtN(iv)}</td><td data-label="Diff" class="num">${fmtN(iv-sv)}</td></tr>`}).join("")+"</table>";
 
-  renderIstTrainingDaily();
+  
 }
+
 
 
 
@@ -785,6 +825,7 @@ function renderIstTrainingDaily(){
   out+="</div>";
   $("statIstDaily").innerHTML=out;
 }
+
 
 function renderWeekStatsSafe(){
   try{
