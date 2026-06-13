@@ -94,7 +94,7 @@ option.currentKwOption{background:#e5e7eb;color:#111827;font-weight:bold}
 
 <section id="events" class="tab">
 <div class="card"><h2>Termin eintragen</h2><p class="small">Öffentlich eintragbar. Ohne Passwort wird der Termin als extern markiert und im Dashboard gelb angezeigt.</p>
-<div class="grid"><div><label>Datum</label><input type="date" id="e_date"></div><div><label>Startzeit</label><input type="time" id="e_start"></div><div><label>Endzeit</label><input type="time" id="e_end"></div><div><label>Typ</label><select id="e_type"><option>Wettkampf</option><option>Lehrgang</option><option>Arbeit</option><option>Reise</option><option>Arzt</option><option>Physio</option><option>Privat</option><option>Sonstiges</option></select></div><div><label>Titel</label><input id="e_title"></div><div><label>Ort</label><input id="e_location"></div></div><label>Notiz</label><textarea id="e_notes"></textarea><br><br><button onclick="saveEvent()">Termin speichern</button></div>
+<div class="grid"><div><label>Datum</label><input type="date" id="e_date"></div><div><label>Startzeit</label><input type="time" id="e_start"></div><div><label>Endzeit</label><input type="time" id="e_end"></div><div><label>Typ</label><select id="e_type"><option>Wettkampf</option><option>Lehrgang</option><option>Reise</option><option>Arzt</option><option>Physio</option><option>Privat</option><option>Sonstiges</option></select></div><div><label>Titel</label><input id="e_title"></div><div><label>Ort</label><input id="e_location"></div></div><label>Notiz</label><textarea id="e_notes"></textarea><br><br><button onclick="saveEvent()">Termin speichern</button></div>
 <div class="card"><h2>Termine</h2><div id="eventsTable"></div></div>
 </section>
 
@@ -109,7 +109,7 @@ option.currentKwOption{background:#e5e7eb;color:#111827;font-weight:bold}
 
 <section id="work" class="tab">
 <div class="card protected"><h2>Arbeit / Urlaub / Zeitausgleich</h2>
-<div class="grid"><div><label>Datum</label><input type="date" id="w_date"></div><div><label>Typ</label><select id="w_type"><option>Arbeit</option><option>Mehrarbeit</option><option>Urlaub</option><option>Zeitausgleich</option><option>Frei</option><option>Krankenstand</option></select></div><div><label>Stunden / Tage</label><input type="number" id="w_hours" step="0.25"></div><div><label>von Uhrzeit bei ZA</label><input type="time" id="w_start"></div><div><label>bis Uhrzeit bei ZA</label><input type="time" id="w_end"></div><div><label>Zuschlag</label><select id="w_bonus"><option value="0">0%</option><option value="25">25%</option><option value="50">50%</option><option value="100">100%</option></select></div></div><label>Notiz</label><textarea id="w_notes"></textarea><br><br><button onclick="saveWork()">Eintrag speichern</button></div>
+<div class="grid"><div><label>Datum</label><input type="date" id="w_date"></div><div><label>Typ</label><select id="w_type"><option>Zeitausgleich</option><option>Urlaub</option><option>Mehrarbeit</option><option>Krankenstand</option><option>Schulung</option></select></div><div><label>Stunden / Tage</label><input type="number" id="w_hours" step="0.25"></div><div><label>von Uhrzeit bei ZA</label><input type="time" id="w_start"></div><div><label>bis Uhrzeit bei ZA</label><input type="time" id="w_end"></div><div><label>Zuschlag</label><select id="w_bonus"><option value="0">0%</option><option value="25">25%</option><option value="50">50%</option><option value="100">100%</option></select></div></div><label>Notiz</label><textarea id="w_notes"></textarea><br><br><button onclick="saveWork()">Eintrag speichern</button></div>
 <div class="card"><h2>Arbeitskonto aktuelles Jahr</h2><div id="workSummary"></div></div><div class="card"><h2>Arbeitseinträge</h2><div id="workTable"></div></div>
 </section>
 
@@ -280,8 +280,12 @@ async function lock(){
   if($("loginMsg"))$("loginMsg").textContent="Ausgeloggt";
 }
 function applyLock(){
-  document.querySelectorAll(".protected input,.protected select,.protected textarea,.protected button").forEach(el=>el.disabled=!unlocked);
-  $("editStatus").textContent=unlocked?"offen":"gesperrt";
+  document.querySelectorAll(".protected input,.protected select,.protected textarea,.protected button").forEach(el=>{
+    if(el.closest("#events")) el.disabled=false;
+    else el.disabled=!unlocked;
+  });
+  if($("detailDeleteBtn")) $("detailDeleteBtn").style.display=unlocked?"inline-block":"none";
+  if($("editStatus")) $("editStatus").textContent=unlocked?"offen":"nur ansehen";
 }
 function updateTrainingForm(){const s=$("t_sport").value;$("zoneBox").style.display=(s==="Krafttraining"||s==="Sprungtraining")?"none":"block";$("strengthBox").style.display=s==="Krafttraining"?"block":"none";$("jumpBoxSelect").style.display=s==="Sprungtraining"?"block":"none";$("timeBox").style.display=s==="Sprungtraining"?"none":"grid";$("jumpBox").style.display=s==="Sprungtraining"?"grid":"none"}
 
@@ -335,7 +339,7 @@ function table(rows,heads){if(!rows.length)return"<p class='small'>Keine Einträ
 
 async function loadData(){
   try{
-    $("status").textContent="Lade Daten...";
+    if($("status")) $("status").textContent="Lade Daten...";
     const [ev,tr,wk,ks,ms]=await Promise.all([
       sb.from("events").select("*").order("date",{ascending:true}),
       sb.from("trainings").select("*").order("date",{ascending:true}),
@@ -343,13 +347,17 @@ async function loadData(){
       sb.from("knee_status").select("*").order("date",{ascending:true}),
       sb.from("measurements").select("*").order("date",{ascending:true})
     ]);
-    if(ev.error)throw ev.error;if(tr.error)throw tr.error;if(wk.error)throw wk.error;if(ks.error)throw ks.error;if(ms.error)throw ms.error;
-    db.events=ev.data||[];db.trainings=tr.data||[];db.work=wk.data||[];db.knee=ks.data||[];db.measurements=ms.data||[];
-    $("status").textContent="Online verbunden · Daten geladen";
+    if(ev.error)throw ev.error;
+    db.events=ev.data||[];
+    db.trainings=tr.error?[]:(tr.data||[]);
+    db.work=wk.error?[]:(wk.data||[]);
+    db.knee=ks.error?[]:(ks.data||[]);
+    db.measurements=ms.error?[]:(ms.data||[]);
+    if($("status")) $("status").textContent="Online verbunden · Daten geladen";
     render();
   }catch(e){
     console.error(e);
-    $("status").textContent="Fehler beim Laden: "+(e.message||e);
+    if($("status")) $("status").textContent="Fehler beim Laden: "+(e.message||e);
     alert("Fehler beim Laden: "+(e.message||e));
   }
 }
@@ -426,8 +434,30 @@ async function assignPolarImport(id){
 }
 
 async function saveTraining(){if(!unlocked)return;const sport=$("t_sport").value;let category=$("t_category").value,datatype="time",minutes=num($("t_h").value)*60+num($("t_m").value),j=0;if(sport==="Krafttraining")category=$("t_strength").value;if(sport==="Sprungtraining"){category=$("t_jump").value;datatype="jump";j=Math.round(num($("t_jumps").value));minutes=0}const payload={date:$("t_date").value||today(),kind:$("t_kind").value,sport,category,datatype,minutes,jumps:j,rpe:num($("t_rpe").value),high_impact:$("t_impact").value==="Ja",knee_reaction:$("t_react").value,notes:(($("t_kind").value==="SOLL"?"Tageszeit: "+$("t_daypart").value+"; ":"")+($("t_notes").value||""))||null};const {error}=await sb.from("trainings").insert(payload);if(error){alert(error.message);return}await loadData()}
-async function saveWork(){if(!unlocked)return;let h=num($("w_hours").value),b=num($("w_bonus").value),typ=$("w_type").value;let credit=0,used=0,vac=0;if(typ==="Mehrarbeit")credit=h*(1+b/100);if(typ==="Zeitausgleich")used=h;if(typ==="Urlaub")vac=h||1;const payload={date:$("w_date").value||today(),type:typ,start_time:$("w_start")?.value||null,end_time:$("w_end")?.value||null,hours:h,bonus_percent:b,za_credit:credit,za_used:used,vacation_used:vac,notes:((typ==="Zeitausgleich"?"von "+($("w_start").value||"")+" bis "+($("w_end").value||"")+"; ":"")+($("w_notes").value||""))||null};const {error}=await sb.from("work_entries").insert(payload);if(error){alert(error.message);return}await loadData()}
-
+async function saveWork(){
+  const typ=$("w_type").value;
+  let hours=num($("w_hours").value);
+  const start=$("w_start")?.value||null;
+  const end=$("w_end")?.value||null;
+  const timedHours=hoursBetweenTimes(start,end);
+  if(!hours && timedHours) hours=timedHours;
+  const bonus=num($("w_bonus")?.value||0);
+  const payload={
+    date:$("w_date").value||today(),
+    type:typ,
+    start_time:start,
+    end_time:end,
+    hours:hours,
+    bonus_percent:bonus,
+    za_credit:typ==="Mehrarbeit"?hours*(1+bonus/100):0,
+    za_used:typ==="Zeitausgleich"?hours:0,
+    vacation_used:typ==="Urlaub"?(hours||1):0,
+    notes:$("w_notes")?.value||null
+  };
+  const {error}=await sb.from("work_entries").insert(payload);
+  if(error){alert(error.message);return}
+  await loadData();
+}
 async function saveKneeCirc(){
   if(!unlocked)return;
   const payload={date:$("kc_date").value||today(),left_7:num($("kc_left").value),right_7:num($("kc_right").value),source:"Knieumfang",notes:$("kc_notes")?.value||null};
@@ -574,6 +604,41 @@ function workDisplayText(w){
   return `<div class="item work">${t}</div>`;
 }
 
+
+function timeHHMM(t){return t?String(t).slice(0,5):""}
+function minutesFromTime(t){
+  if(!t)return null;
+  let p=String(t).split(":").map(Number);
+  return (p[0]||0)*60+(p[1]||0);
+}
+function hoursBetweenTimes(a,b){
+  const s=minutesFromTime(a), e=minutesFromTime(b);
+  if(s===null||e===null||e<=s)return 0;
+  return (e-s)/60;
+}
+function workStartMinutes(w){return minutesFromTime(w.start_time) ?? 720}
+function workEndMinutes(w){return minutesFromTime(w.end_time) ?? (workStartMinutes(w)+60)}
+function workDisplayText(w){
+  let t=esc(w.type||"");
+  if(w.type==="Zeitausgleich"){
+    const a=timeHHMM(w.start_time), b=timeHHMM(w.end_time);
+    if(a||b)t+=" "+a+(b?("-"+b):"");
+  }
+  if(w.type==="Mehrarbeit" && w.bonus_percent)t+=" +"+Number(w.bonus_percent).toFixed(0)+"%";
+  return `<div class="item work">${t}</div>`;
+}
+function vacationBalance(){
+  const currentYear=new Date().getFullYear();
+  let used=(db.work||[]).filter(w=>new Date(w.date+"T00:00:00").getFullYear()===currentYear)
+    .reduce((a,w)=>a+num(w.vacation_used),0);
+  return {used, remain:22-used};
+}
+function zaBalance(){
+  let credit=(db.work||[]).reduce((a,w)=>a+num(w.za_credit),0);
+  let used=(db.work||[]).reduce((a,w)=>a+num(w.za_used),0);
+  return {credit, used, remain:credit-used};
+}
+
 function renderWeek(){
   ensureDashboardSelectors();
   const season=selectedSeason||seasonOf(today());
@@ -591,29 +656,22 @@ function renderWeek(){
     if(d.getDay()===6)classes.push("saturday");
     if(d.getDay()===0)classes.push("sunday");
     if(holidays.has(ds))classes.push("holiday");
-
     let am=[],pm=[];
     function addAM(markup,minutes=480){am.push({minutes,markup})}
     function addPM(markup,minutes=720){pm.push({minutes,markup})}
     function pushTimed(minutes,markup){(minutes<720?am:pm).push({minutes,markup})}
-
     db.events.filter(e=>e.date===ds).forEach(e=>{
       pushTimed(eventMinutes(e),`<div class="item ${e.source==='Extern'?'external':''}">${e.start_time||''} ${esc(e.title)} ${e.source==='Extern'?'(extern)':''}</div>`);
     });
-
-    // Im Wochenplan nur SOLL-Training anzeigen
     db.trainings.filter(t=>t.date===ds && t.kind==="SOLL").forEach(t=>{
       const mark=`<div class="item training">${esc(t.kind)} ${esc(t.sport)} ${t.datatype==='jump'?t.jumps+' Spr.':fmtHM(t.minutes)}</div>`;
       if(String(t.daypart||t.notes||"").includes("Nachmittag")) addPM(mark,720);
       else addAM(mark,480);
     });
-
-    // Arbeit / Urlaub / Krankenstand / Zeitausgleich sauber anzeigen
     db.work.filter(w=>w.date===ds).forEach(w=>{
       const type=String(w.type||"");
       const mark=workDisplayText(w);
       if(type==="Urlaub" || type==="Krankenstand"){
-        // genau einmal vormittag und einmal nachmittag
         addAM(mark,480);
         addPM(mark,720);
       }else if(type==="Zeitausgleich"){
@@ -625,7 +683,6 @@ function renderWeek(){
         pushTimed(workStartMinutes(w),mark);
       }
     });
-
     am.sort((a,b)=>a.minutes-b.minutes);
     pm.sort((a,b)=>a.minutes-b.minutes);
     let holidayLabel=holidays.has(ds)?" <span class='small'>Feiertag</span>":"";
@@ -654,22 +711,18 @@ function renderTables(){
   $("measureTable").innerHTML=compactList(allMeasurements().slice().reverse().map(m=>({...m,short:shortMeasure(m)})),"measurements");
 }
 function renderWorkSummary(){
-  let currentYear=new Date().getFullYear();
-  function workForYear(y){return db.work.filter(w=>new Date(w.date+"T00:00:00").getFullYear()===y)}
-  const summaries=(IMPORTED.workImport&&IMPORTED.workImport.summary)||{};
-  let s=summaries[String(currentYear)]||{};
-  let workYear=workForYear(currentYear);
-  let vacUsedManual=workYear.reduce((a,w)=>a+num(w.vacation_used),0);
-  let zaCredit=workYear.reduce((a,w)=>a+num(w.za_credit),0);
-  let zaUsed=workYear.reduce((a,w)=>a+num(w.za_used),0);
-  let vacUsed=num(s.vacationUsed)+vacUsedManual;
-  let vacRemain=(s.vacationEnd!==undefined?num(s.vacationEnd):((s.vacationStart!==undefined?num(s.vacationStart):22)+num(s.vacationEntitlement)-num(s.vacationUsed)))-vacUsedManual;
-  let zaRemain=(s.zaEnd!==undefined?num(s.zaEnd):(num(s.zaStart)+num(s.zaCredit)) )+zaCredit-zaUsed;
-  $("vacRemain").textContent=vacRemain.toFixed(1)+" Tage";
-  $("zaRemain").textContent=zaRemain.toFixed(2)+" h";
-  $("workSummary").innerHTML=`<div class="zoneGrid"><div class="box"><span>Urlaub verbraucht ${currentYear}</span><strong>${vacUsed.toFixed(1)} Tage</strong></div><div class="box"><span>Urlaub übrig</span><strong>${vacRemain.toFixed(1)} Tage</strong></div><div class="box"><span>ZA verbraucht ${currentYear}</span><strong>${zaUsed.toFixed(2)} h</strong></div><div class="box"><span>ZA übrig</span><strong>${zaRemain.toFixed(2)} h</strong></div></div>`;
+  const vac=vacationBalance();
+  const za=zaBalance();
+  if($("vacRemain")) $("vacRemain").textContent=vac.remain.toFixed(1)+" Tage";
+  if($("zaRemain")) $("zaRemain").textContent=za.remain.toFixed(2)+" h";
+  if($("workSummary")) $("workSummary").innerHTML=`<div class="zoneGrid">
+    <div class="box"><span>Urlaub verbraucht</span><strong>${vac.used.toFixed(1)} Tage</strong></div>
+    <div class="box"><span>Resturlaub</span><strong>${vac.remain.toFixed(1)} Tage</strong></div>
+    <div class="box"><span>ZA aufgebaut</span><strong>${za.credit.toFixed(2)} h</strong></div>
+    <div class="box"><span>ZA verbraucht</span><strong>${za.used.toFixed(2)} h</strong></div>
+    <div class="box"><span>Rest Zeitausgleich</span><strong>${za.remain.toFixed(2)} h</strong></div>
+  </div>`;
 }
-
 function selectedYearSeasons(){
   const all=typeof allSeasonsTo2040==="function"?allSeasonsTo2040():[...new Set([...(IMPORTED.seasons||[]),...db.trainings.map(t=>seasonOf(t.date))])].sort();
   const current=seasonOf(today());
